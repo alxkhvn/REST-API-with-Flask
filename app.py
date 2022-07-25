@@ -10,6 +10,7 @@ from apispec import APISpec  # for apispec and flask app work together
 from flask_apispec.extension import FlaskApiSpec  # helps to create swagger docs for every route of app
 from schemas import VideoSchema, UserSchema, AuthSchema
 from flask_apispec import use_kwargs, marshal_with
+import logging
 
 app = Flask(__name__)
 app.config.from_object(Config)  # даём доступ к secret key
@@ -46,12 +47,34 @@ from models import *
 Base.metadata.create_all(bind=engine)  # Создаёт схему базы данных в в базе
 
 
+def setup_logger():
+    logger = logging.getLogger(__name__)  # получаем экземпляр логера
+    logger.setLevel(logging.DEBUG)  # Устанавливаем уровень логирования
+
+    formatter = logging.Formatter(
+        '%(asctime)s:%(name)s:%(levelname)s:%(message)s')  # определяем формат логов
+    file_handler = logging.FileHandler('log/api.log')  # создаем filehandler чтоб выводить логи в файл
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    return logger
+
+
+logger = setup_logger()
+
+
 @app.route('/tutorials', methods=['GET'])  # route() decorator tells Flask what URL should trigger our function
 @jwt_required()  # данный декоратор даёт доступ к роуту только авторизованным пользователям(неавт-ный юзер получит 401)
 @marshal_with(VideoSchema(many=True))  # декоратор отвечает за сериализацию many=True потому что роут возвращяет не один json а массив из них
 def get_list():
-    user_id = get_jwt_identity()
-    videos = Video.query.filter(Video.user_id == user_id)  # возвращяем данные только этого пользователя
+    try:
+        user_id = get_jwt_identity()
+        videos = Video.query.filter(Video.user_id == user_id).all()  # возвращяем данные только этого пользователя
+        assert None
+    except Exception as e:
+        logger.warning(
+            f'user:{user_id} tutorials - read action failed with errors: {e}')
+        return {'message': str(e)}, 400
     return videos
 
 
@@ -60,10 +83,15 @@ def get_list():
 @use_kwargs(VideoSchema)  # тут не указываем many=True потому что на вход даём только один json
 @marshal_with(VideoSchema)
 def update_list(**kwargs):
-    user_id = get_jwt_identity()  # извлекает из токена поле identity и получает доступ к userid
-    new_one = Video(user_id=user_id, **kwargs)
-    session.add(new_one)
-    session.commit()
+    try:
+        user_id = get_jwt_identity()  # извлекает из токена поле identity и получает доступ к userid
+        new_one = Video(user_id=user_id, **kwargs)
+        session.add(new_one)
+        session.commit()
+    except Exception as e:
+        logger.warning(
+            f'user:{user_id} tutorials - create action failed with errors: {e}')
+        return {'message': str(e)}, 400
     return new_one
 
 
@@ -72,16 +100,21 @@ def update_list(**kwargs):
 @use_kwargs(VideoSchema)
 @marshal_with(VideoSchema)
 def update_tutorial(tutorial_id, **kwargs):
-    user_id = get_jwt_identity()
-    # только пользователь указанный в user_id может совершать операции с данной записью
-    item = Video.query.filter(
-        Video.id == tutorial_id,
-        Video.user_id == user_id).first()
-    if not item:
-        return {'message': 'No tutorials with such id'}, 400
-    for key, value in kwargs.items():
-        setattr(item, key, value)
-    session.commit()
+    try:
+        user_id = get_jwt_identity()
+        # только пользователь указанный в user_id может совершать операции с данной записью
+        item = Video.query.filter(
+            Video.id == tutorial_id,
+            Video.user_id == user_id).first()
+        if not item:
+            return {'message': 'No tutorials with such id'}, 400
+        for key, value in kwargs.items():
+            setattr(item, key, value)
+        session.commit()
+    except Exception as e:
+        logger.warning(
+            f'user:{user_id} tutorial:{tutorial_id} - update action failed with errors: {e}')
+        return {'message': str(e)}, 400
     return item
 
 
@@ -89,13 +122,18 @@ def update_tutorial(tutorial_id, **kwargs):
 @jwt_required()
 @marshal_with(VideoSchema)
 def delete_tutorial(tutorial_id):
-    user_id = get_jwt_identity()
-    item = Video.query.filter(Video.id == tutorial_id,
-                              Video.user_id == user_id).first()
-    if not item:
-        return {'message': 'No tutorials with such id'}, 400
-    session.delete(item)
-    session.commit()
+    try:
+        user_id = get_jwt_identity()
+        item = Video.query.filter(Video.id == tutorial_id,
+                                  Video.user_id == user_id).first()
+        if not item:
+            return {'message': 'No tutorials with such id'}, 400
+        session.delete(item)
+        session.commit()
+    except Exception as e:
+        logger.warning(
+            f'user:{user_id} tutorial:{tutorial_id} - read action failed with errors: {e}')
+        return {'message': str(e)}, 400
     return '', 204
 
 
@@ -103,10 +141,15 @@ def delete_tutorial(tutorial_id):
 @use_kwargs(UserSchema)
 @marshal_with(AuthSchema)
 def register(**kwargs):
-    user = User(**kwargs)
-    session.add(user)
-    session.commit()
-    token = user.get_token()
+    try:
+        user = User(**kwargs)
+        session.add(user)
+        session.commit()
+        token = user.get_token()
+    except Exception as e:
+        logger.warning(
+            f'registration failed with errors: {e}')
+        return {'message': str(e)}, 400
     return {'access_token': token}
 
 
@@ -114,8 +157,13 @@ def register(**kwargs):
 @use_kwargs(UserSchema(only=('email', 'password')))
 @marshal_with(AuthSchema)
 def login(**kwargs):
-    user = User.authenticate(**kwargs)
-    token = user.get_token()
+    try:
+        user = User.authenticate(**kwargs)
+        token = user.get_token()
+    except Exception as e:
+        logger.warning(
+            f'login with email {kwargs["email"]} failed with errors: {e}')
+        return {'message': str(e)}, 400
     return {'access_token': token}
 
 
@@ -123,6 +171,17 @@ def login(**kwargs):
 def shutdown_session(exception=None):
     '''Закрываем сессию'''
     session.remove()
+
+
+@app.errorhandler(422)
+def error_handler(err):
+    headers = err.data.get('headers', None)
+    messages = err.data.get('messages', ['Invalid request'])
+    logger.warning(f'Invalid input params: {messages}')  # логгируем все ошибки связанные с валидацией схем
+    if headers:
+        return jsonify({'message': messages}), 400, headers
+    else:
+        return jsonify({'message': messages}), 400
 
 
 docs.register(get_list) #генерирует swagger документацию для роута get_list
