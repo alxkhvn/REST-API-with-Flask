@@ -69,8 +69,7 @@ logger = setup_logger()
 def get_list():
     try:
         user_id = get_jwt_identity()
-        videos = Video.query.filter(Video.user_id == user_id).all()  # возвращяем данные только этого пользователя
-        assert None
+        videos = Video.get_user_list(user_id=user_id)  # возвращяем данные только этого пользователя
     except Exception as e:
         logger.warning(
             f'user:{user_id} tutorials - read action failed with errors: {e}')
@@ -86,8 +85,7 @@ def update_list(**kwargs):
     try:
         user_id = get_jwt_identity()  # извлекает из токена поле identity и получает доступ к userid
         new_one = Video(user_id=user_id, **kwargs)
-        session.add(new_one)
-        session.commit()
+        new_one.save()
     except Exception as e:
         logger.warning(
             f'user:{user_id} tutorials - create action failed with errors: {e}')
@@ -103,14 +101,8 @@ def update_tutorial(tutorial_id, **kwargs):
     try:
         user_id = get_jwt_identity()
         # только пользователь указанный в user_id может совершать операции с данной записью
-        item = Video.query.filter(
-            Video.id == tutorial_id,
-            Video.user_id == user_id).first()
-        if not item:
-            return {'message': 'No tutorials with such id'}, 400
-        for key, value in kwargs.items():
-            setattr(item, key, value)
-        session.commit()
+        item = Video.get(tutorial_id, user_id)
+        item.update(**kwargs)
     except Exception as e:
         logger.warning(
             f'user:{user_id} tutorial:{tutorial_id} - update action failed with errors: {e}')
@@ -124,12 +116,8 @@ def update_tutorial(tutorial_id, **kwargs):
 def delete_tutorial(tutorial_id):
     try:
         user_id = get_jwt_identity()
-        item = Video.query.filter(Video.id == tutorial_id,
-                                  Video.user_id == user_id).first()
-        if not item:
-            return {'message': 'No tutorials with such id'}, 400
-        session.delete(item)
-        session.commit()
+        item = Video.get(tutorial_id, user_id)
+        item.delete()
     except Exception as e:
         logger.warning(
             f'user:{user_id} tutorial:{tutorial_id} - read action failed with errors: {e}')
@@ -184,7 +172,7 @@ def error_handler(err):
         return jsonify({'message': messages}), 400
 
 
-docs.register(get_list) #генерирует swagger документацию для роута get_list
+docs.register(get_list)  # генерирует swagger документацию для роута get_list
 docs.register(update_list)
 docs.register(update_tutorial)
 docs.register(delete_tutorial)
