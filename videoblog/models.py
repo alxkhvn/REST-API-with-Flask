@@ -22,6 +22,16 @@ class Video(Base):
             raise
         return videos
 
+    @classmethod
+    def get_list(cls):
+        try:
+            videos = cls.query.all()
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        return videos
+
     def save(self):
         try:
             session.add(self)

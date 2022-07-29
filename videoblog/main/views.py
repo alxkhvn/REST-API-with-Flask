@@ -4,13 +4,26 @@ from videoblog.schemas import VideoSchema
 from flask_apispec import use_kwargs, marshal_with
 from videoblog.models import Video
 from flask_jwt_extended import jwt_required, get_jwt_identity  # libs for authentication
+from videoblog.base_view import BaseView
 
 videos = Blueprint('videos', __name__)
 
 
+class ListView(BaseView):
+    @marshal_with(VideoSchema(many=True))
+    def get(self):
+        try:
+            videos = Video.get_list()  # возвращяем данные только этого пользователя
+        except Exception as e:
+            logger.warning(
+                f'tutorials - read action failed with errors: {e}')
+            return {'message': str(e)}, 400
+        return videos
+
+
 @videos.route('/tutorials', methods=['GET'])  # route() decorator tells Flask what URL should trigger our function
 @jwt_required()  # данный декоратор даёт доступ к роуту только авторизованным пользователям(неавт-ный юзер получит 401)
-@marshal_with(VideoSchema(many=True))  # декоратор отвечает за сериализацию many=True потому что роут возвращяет не один json а массив из них
+@marshal_with(VideoSchema(many=True))  # декоратор отвечает за сериализацию, many=True потому что роут возвращяет не один json а массив из них
 def get_list():
     try:
         user_id = get_jwt_identity()
@@ -85,3 +98,4 @@ docs.register(get_list, blueprint='videos')  # генерирует swagger до
 docs.register(update_list, blueprint='videos')
 docs.register(update_tutorial, blueprint='videos')
 docs.register(delete_tutorial, blueprint='videos')
+ListView.register(videos, docs, '/main', 'listview')
