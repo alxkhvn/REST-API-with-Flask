@@ -16,7 +16,7 @@ app.config.from_object(Config)  # даём доступ к secret key
 
 client = app.test_client()  # тестовый клиент flask
 
-engine = Config.SQLALCHEMY_DATABASE_URI
+engine = create_engine(Config.SQLALCHEMY_DATABASE_URI)
 
 
 session = scoped_session(sessionmaker(

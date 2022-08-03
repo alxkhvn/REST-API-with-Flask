@@ -4,14 +4,15 @@ services:
   app:
     build: .
     restart: always
-    depends_on:
-      - postgres
+    command: gunicorn --bind 0.0.0.0:5005 manage:app
     ports:
       - "5005:5005"
     environment:
-      - SQLALCHEMY_DATABASE_URI=${DATABASE_URI}
+      - DATABASE_URL=${DATABASE_URL}
       - SECRET_KEY=${SECRET_KEY}
-  postgres:
+    depends_on:
+      - db
+  db:
     image: postgres:10
     restart: always
     ports:
@@ -19,3 +20,4 @@ services:
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
