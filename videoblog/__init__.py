@@ -16,7 +16,8 @@ app.config.from_object(Config)  # даём доступ к secret key
 
 client = app.test_client()  # тестовый клиент flask
 
-engine = create_engine('sqlite:///db.sqlite')  # Создаём привязку к базе
+engine = Config.SQLALCHEMY_DATABASE_URI
+
 
 session = scoped_session(sessionmaker(
     autocommit=False, autoflush=False, bind=engine))
